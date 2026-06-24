@@ -10,6 +10,11 @@ import {
   Alert,
   Platform
 } from 'react-native';
+import {
+  bytesToKilobytes,
+  calculateReductionPercent,
+  formatConfidencePercent
+} from './receiptMetrics';
 
 const CONFIG = {
   SUPABASE_URL: 'https://miomghplfmksvrpdbcah.supabase.co',
@@ -126,9 +131,9 @@ const ReceiptSnap = (props) => {
             (blob) => {
               const compressionTime = Date.now() - startTime;
               const compressedSize = blob.size;
-              const compressionRatio = ((1 - compressedSize / originalSize) * 100).toFixed(1);
+              const compressionRatio = calculateReductionPercent(originalSize, compressedSize);
 
-              console.log(`[COMPRESSION] ${(originalSize / 1024).toFixed(1)}KB → ${(compressedSize / 1024).toFixed(1)}KB (${compressionRatio}% reduction in ${compressionTime}ms)`);
+              console.log(`[COMPRESSION] ${bytesToKilobytes(originalSize)}KB → ${bytesToKilobytes(compressedSize)}KB (${compressionRatio}% reduction in ${compressionTime}ms)`);
 
               setCompressionStats({
                 originalSize,
@@ -523,7 +528,7 @@ const ReceiptSnap = (props) => {
               <Text style={styles.compressionTitle}>Image Optimized (Tuned Mode)</Text>
               <Text style={styles.compressionDetails}>
                 {compressionStats.originalDimensions} → {compressionStats.compressedDimensions} •
-                {(compressionStats.originalSize / 1024).toFixed(0)}KB → {(compressionStats.compressedSize / 1024).toFixed(0)}KB
+                {bytesToKilobytes(compressionStats.originalSize, 0)}KB → {bytesToKilobytes(compressionStats.compressedSize, 0)}KB
                 ({compressionStats.compressionRatio}% smaller) in {compressionStats.compressionTime}ms
               </Text>
             </View>
@@ -551,9 +556,9 @@ const ReceiptSnap = (props) => {
             {imageInfo && imageInfo.size > 0 && (
               <View style={styles.fileInfo}>
                 <Text style={styles.fileInfoText}>
-                  {imageInfo.name} • {(imageInfo.size / 1024).toFixed(1)}KB
+                  {imageInfo.name} • {bytesToKilobytes(imageInfo.size)}KB
                   {imageInfo.originalSize && imageInfo.originalSize !== imageInfo.size &&
-                    ` (was ${(imageInfo.originalSize / 1024).toFixed(1)}KB)`
+                    ` (was ${bytesToKilobytes(imageInfo.originalSize)}KB)`
                   }
                 </Text>
               </View>
@@ -617,7 +622,7 @@ const ReceiptSnap = (props) => {
                     styles.confidenceText,
                     { color: getConfidenceTextColor(results.fields.store_confidence || 0) }
                   ]}>
-                    {((results.fields.store_confidence || 0) * 100).toFixed(1)}%
+                    {formatConfidencePercent(results.fields.store_confidence)}%
                   </Text>
                 </View>
               </View>
