@@ -13,7 +13,8 @@ import {
 import {
   bytesToKilobytes,
   calculateReductionPercent,
-  formatConfidencePercent
+  formatConfidencePercent,
+  normalizeConfidence
 } from './receiptMetrics';
 
 const CONFIG = {
@@ -421,14 +422,16 @@ const ReceiptSnap = (props) => {
   };
 
   const getConfidenceStyle = (confidence) => {
-    if (confidence >= 0.9) return styles.confidenceHigh;
-    if (confidence >= 0.7) return styles.confidenceMedium;
+    const normalizedConfidence = normalizeConfidence(confidence);
+    if (normalizedConfidence >= 0.9) return styles.confidenceHigh;
+    if (normalizedConfidence >= 0.7) return styles.confidenceMedium;
     return styles.confidenceLow;
   };
 
   const getConfidenceTextColor = (confidence) => {
-    if (confidence >= 0.9) return '#15803d';
-    if (confidence >= 0.7) return '#a16207';
+    const normalizedConfidence = normalizeConfidence(confidence);
+    if (normalizedConfidence >= 0.9) return '#15803d';
+    if (normalizedConfidence >= 0.7) return '#a16207';
     return '#991b1b';
   };
 
