@@ -1,0 +1,15 @@
+{
+  "displayName": "ReceiptSnap",
+  "components": [
+    {
+      "name": "ReceiptSnap",
+      "manifest": "./src/components/ReceiptSnap/manifest.json"
+    }
+  ],
+  "requiresThirdPartySubscription": false,
+  "author": "test",
+  "description": "test",
+  "demoAppURL": "https://previewer.adalo.com/fccd8d2f-16cc-40e8-811d-bcb290ab76b0?sessionToken=eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjE4MjEwODAsImVtYWlsIjoiYWJpZC5odXNzYWluNzYwMkBnbWFpbC5jb20iLCJpYXQiOjE3NTk3NTAwMTEsImV4cCI6MTc2MDM1NDgxMX0.CyQabGRp_4ulRxzSTkfapz6MBcCQaGrwHCgzVbVB0YL6sNjYuhpVdFbA0APhMtvGSPy_HOFTtMAlR8OiHPW-t102ifPZGmhUSACDSDUAUuIQhlk4FC6qBUrxEV4F2LR1o56M0y9C-qFvAoJF_-23FRjop-urHQjXbclPvRmlM243pmtUGcRwk-LEILQwvRPEGtLHmKu4PcsmXcn5OUoqCgBdbBXNi4kysVt6X3KiXaMgoDhxrHHWvY66VgRXmsLwlrWAFtWAp20D18iWRn5Np2GVKfjzIloMlXqQzi5cWtscXUi25tk6r41u2O8jRdzzcmmsg3xtIby8s_3NXjrF4g&target=818468a1bfad492599706dafa106d579&params=%7B%7D",
+  "supportURL": "https://michael-lance-huffs-team.adalo.com/receipt-reader?target=818468a1bfad492599706dafa106d579&params=%7B%7D",
+  "logo": "./example-logo.png"
+}

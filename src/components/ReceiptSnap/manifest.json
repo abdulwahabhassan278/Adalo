@@ -1,0 +1,43 @@
+{
+  "displayName": "ReceiptSnap",
+  "defaultWidth": 375,
+  "defaultHeight": 600,
+  "icon": "./example-thumbnail.png",
+  "props": [
+    {
+      "name": "primaryColor",
+      "displayName": "Primary Color",
+      "type": "color",
+      "default": "#3b82f6",
+      "description": "Main accent color for buttons and highlights"
+    },
+    {
+      "name": "backgroundColor",
+      "displayName": "Background Color",
+      "type": "color",
+      "default": "#f5f7fa",
+      "description": "Main background color"
+    },
+    {
+      "name": "maxFileSize",
+      "displayName": "Max File Size (KB)",
+      "type": "number",
+      "default": 400,
+      "description": "Maximum file size in kilobytes"
+    },
+    {
+      "name": "timeoutSeconds",
+      "displayName": "Timeout (seconds)",
+      "type": "number",
+      "default": 70,
+      "description": "Processing timeout in seconds"
+    },
+    {
+      "name": "imageURL",
+      "displayName": "Image URL",
+      "type": "text",
+      "default": "",
+      "description": "The URL of the uploaded receipt image (use Adalo's Take Photo or Choose from Library action to set this)"
+    }
+  ]
+}
