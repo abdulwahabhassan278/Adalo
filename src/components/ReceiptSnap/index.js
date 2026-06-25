@@ -29,9 +29,11 @@ const ReceiptSnap = (props) => {
   const {
     primaryColor = '#3b82f6',
     backgroundColor = '#f5f7fa',
+    maxFileSize = 400,
     timeoutSeconds = 70
   } = props;
 
+  const maxFileSizeBytes = maxFileSize * 1024;
   const timeoutMs = timeoutSeconds * 1000;
   const fileInputRef = useRef(null);
 
@@ -181,6 +183,15 @@ const ReceiptSnap = (props) => {
 
     if (!file.type.startsWith('image/') && !['jpg', 'jpeg', 'png'].includes(extension)) {
       Alert.alert('Invalid File', 'Please select an image file (JPEG/PNG).');
+      return;
+    }
+
+    if (file.size > maxFileSizeBytes) {
+      Alert.alert(
+        'File Too Large',
+        `Please select an image smaller than ${bytesToKilobytes(maxFileSizeBytes, 0)}KB.`
+      );
+      event.target.value = '';
       return;
     }
 
