@@ -11,9 +11,11 @@ import {
   Platform
 } from 'react-native';
 import {
+  buildReceiptSummary,
   bytesToKilobytes,
   calculateReductionPercent,
   formatConfidencePercent,
+  formatDurationSeconds,
   normalizeConfidence
 } from './receiptMetrics';
 
@@ -398,7 +400,7 @@ const ReceiptSnap = (props) => {
       setProcessingStage('Complete!');
       setTimeout(() => {
         setResults(result);
-        Alert.alert('Success', `Receipt processed in ${(result.processing_time_ms / 1000).toFixed(2)}s!`);
+        Alert.alert('Success', `Receipt processed in ${formatDurationSeconds(result.processing_time_ms)}!`);
       }, 500);
     } catch (err) {
       const errorMsg = err.message === 'timeout'
@@ -460,6 +462,10 @@ const ReceiptSnap = (props) => {
       marginTop: 12,
     },
   }), [backgroundColor, primaryColor]);
+
+  const receiptSummary = useMemo(() => (
+    results && results.success ? buildReceiptSummary(results) : null
+  ), [results]);
 
   return (
     <ScrollView style={[styles.container, dynamicStyles.container]}>
@@ -609,7 +615,7 @@ const ReceiptSnap = (props) => {
           </View>
         )}
 
-        {results && results.success && results.fields && (
+        {receiptSummary && (
           <View style={styles.results}>
             <View style={styles.resultCard}>
               <View style={styles.resultHeader}>
@@ -622,7 +628,7 @@ const ReceiptSnap = (props) => {
               <View style={styles.resultRow}>
                 <Text style={styles.resultLabel}>Store Name:</Text>
                 <Text style={styles.resultValue}>
-                  {results.fields.store_name || 'N/A'}
+                  {receiptSummary.storeName}
                 </Text>
               </View>
 
@@ -630,13 +636,13 @@ const ReceiptSnap = (props) => {
                 <Text style={styles.resultLabel}>Confidence:</Text>
                 <View style={[
                   styles.confidence,
-                  getConfidenceStyle(results.fields.store_confidence || 0)
+                  getConfidenceStyle(receiptSummary.confidence)
                 ]}>
                   <Text style={[
                     styles.confidenceText,
-                    { color: getConfidenceTextColor(results.fields.store_confidence || 0) }
+                    { color: getConfidenceTextColor(receiptSummary.confidence) }
                   ]}>
-                    {formatConfidencePercent(results.fields.store_confidence)}%
+                    {formatConfidencePercent(receiptSummary.confidence)}%
                   </Text>
                 </View>
               </View>
@@ -644,23 +650,21 @@ const ReceiptSnap = (props) => {
               <View style={styles.resultRow}>
                 <Text style={styles.resultLabel}>Date:</Text>
                 <Text style={styles.resultValue}>
-                  {results.fields.date || 'N/A'}
+                  {receiptSummary.date}
                 </Text>
               </View>
 
               <View style={styles.resultRow}>
                 <Text style={styles.resultLabel}>Total Amount:</Text>
                 <Text style={styles.resultValue}>
-                  {results.fields.total_amount
-                    ? `$${results.fields.total_amount.toFixed(2)}`
-                    : 'N/A'}
+                  {receiptSummary.totalAmount}
                 </Text>
               </View>
 
               <View style={styles.resultRow}>
                 <Text style={styles.resultLabel}>Processing Time:</Text>
                 <Text style={[styles.resultValue, styles.resultValueHighlight]}>
-                  {(results.processing_time_ms / 1000).toFixed(2)}s
+                  {receiptSummary.processingTime}
                 </Text>
               </View>
             </View>
