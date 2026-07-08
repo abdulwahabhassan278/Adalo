@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import {
   buildReceiptSummary,
+  buildReceiptFieldRows,
   bytesToKilobytes,
   calculateReductionPercent,
   formatConfidencePercent,
@@ -38,12 +39,17 @@ const ReceiptSnap = (props) => {
   const maxFileSizeBytes = maxFileSize * 1024;
   const timeoutMs = timeoutSeconds * 1000;
   const fileInputRef = useRef(null);
+  const stageTimersRef = useRef([]);
+
+  const clearStageTimers = () => {
+    stageTimersRef.current.forEach((timer) => clearTimeout(timer));
+    stageTimersRef.current = [];
+  };
 
   // Mode must be selected FIRST
   const [selectedModel, setSelectedModel] = useState(null);
   const [selectedImage, setSelectedImage] = useState(null);
   const [imageInfo, setImageInfo] = useState(null);
-  const [imageData, setImageData] = useState(null);
   const [processing, setProcessing] = useState(false);
   const [processingTime, setProcessingTime] = useState(0);
   const [results, setResults] = useState(null);
@@ -53,6 +59,9 @@ const ReceiptSnap = (props) => {
   const [uploading, setUploading] = useState(false);
   const [processingStage, setProcessingStage] = useState('');
   const [compressionStats, setCompressionStats] = useState(null);
+  const [lastUploadedAt, setLastUploadedAt] = useState(null);
+  const [lastProcessedAt, setLastProcessedAt] = useState(null);
+  const [attemptCount, setAttemptCount] = useState(0);
 
   useEffect(() => {
     let interval;
@@ -66,6 +75,8 @@ const ReceiptSnap = (props) => {
       if (interval) clearInterval(interval);
     };
   }, [processing]);
+
+  useEffect(() => () => clearStageTimers(), []);
 
   useEffect(() => {
     if (Platform.OS === 'web' && typeof document !== 'undefined') {
@@ -203,6 +214,16 @@ const ReceiptSnap = (props) => {
     }
 
     try {
+      clearStageTimers();
+      setResults(null);
+      setError(null);
+      setUploadData(null);
+      setProcessingStage('');
+      setCompressionStats(null);
+      setLastUploadedAt(null);
+      setLastProcessedAt(null);
+      setAttemptCount(0);
+
       // TUNED mode: compress and grayscale before upload
       if (selectedModel === 'tuned') {
         setProcessingStage('Compressing and grayscaling image for tuned mode...');
@@ -211,7 +232,6 @@ const ReceiptSnap = (props) => {
 
         setPreviewAspectRatio(compressed.width / compressed.height);
         setSelectedImage(compressed.dataUrl);
-        setImageData(compressed.base64Data);
         setImageInfo({
           size: compressed.size,
           name: file.name.replace(/\.[^/.]+$/, '.jpg'),
@@ -248,7 +268,6 @@ const ReceiptSnap = (props) => {
           });
 
           setSelectedImage(dataUrl);
-          setImageData(base64Data);
           setImageInfo({
             size: file.size,
             name: file.name,
@@ -340,18 +359,18 @@ const ReceiptSnap = (props) => {
       }
 
       setUploadData(uploadDataResponse);
+      setLastUploadedAt(new Date().toISOString());
 
       // Auto-start processing immediately after upload
-      setTimeout(() => {
+      stageTimersRef.current.push(setTimeout(() => {
         processReceipt(uploadDataResponse);
-      }, 500);
+      }, 500));
 
     } catch (err) {
       const errorMsg = err.message;
       setError(errorMsg);
       Alert.alert('Upload Error', errorMsg);
       setSelectedImage(null);
-      setImageData(null);
       setImageInfo(null);
     } finally {
       setUploading(false);
@@ -369,11 +388,16 @@ const ReceiptSnap = (props) => {
     setProcessing(true);
     setError(null);
     setProcessingTime(0);
+    setLastProcessedAt(null);
+    setAttemptCount((currentCount) => currentCount + 1);
+    clearStageTimers();
     setProcessingStage('Sending to OCR...');
 
     try {
-      setTimeout(() => setProcessingStage('Analyzing receipt...'), 1000);
-      setTimeout(() => setProcessingStage('Extracting fields...'), 2000);
+      stageTimersRef.current = [
+        setTimeout(() => setProcessingStage('Analyzing receipt...'), 1000),
+        setTimeout(() => setProcessingStage('Extracting fields...'), 2000)
+      ];
 
       const processPayload = {
         receipt_id: dataToUse.receipt_id,
@@ -402,12 +426,15 @@ const ReceiptSnap = (props) => {
       }
 
       const result = await processResponse.json();
+      clearStageTimers();
       setProcessingStage('Complete!');
-      setTimeout(() => {
+      stageTimersRef.current.push(setTimeout(() => {
         setResults(result);
+        setLastProcessedAt(new Date().toISOString());
         Alert.alert('Success', `Receipt processed in ${formatDurationSeconds(result.processing_time_ms)}!`);
-      }, 500);
+      }, 500));
     } catch (err) {
+      clearStageTimers();
       const errorMsg = err.message === 'timeout'
         ? 'Processing is taking longer than expected'
         : err.message;
@@ -415,16 +442,25 @@ const ReceiptSnap = (props) => {
       setProcessingStage('');
       Alert.alert('Error', errorMsg);
     } finally {
-      setTimeout(() => {
+      stageTimersRef.current.push(setTimeout(() => {
         setProcessing(false);
         setProcessingStage('');
-      }, 500);
+      }, 500));
     }
   };
 
+  const retryProcessing = () => {
+    if (!uploadData) {
+      Alert.alert('Retry Unavailable', 'Upload the receipt again before retrying OCR.');
+      return;
+    }
+
+    processReceipt(uploadData);
+  };
+
   const resetForm = () => {
+    clearStageTimers();
     setSelectedImage(null);
-    setImageData(null);
     setImageInfo(null);
     setResults(null);
     setError(null);
@@ -433,17 +469,13 @@ const ReceiptSnap = (props) => {
     setUploadData(null);
     setProcessingStage('');
     setCompressionStats(null);
+    setLastUploadedAt(null);
+    setLastProcessedAt(null);
+    setAttemptCount(0);
 
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  };
-
-  const getConfidenceStyle = (confidence) => {
-    const normalizedConfidence = normalizeConfidence(confidence);
-    if (normalizedConfidence >= 0.9) return styles.confidenceHigh;
-    if (normalizedConfidence >= 0.7) return styles.confidenceMedium;
-    return styles.confidenceLow;
   };
 
   const getConfidenceTextColor = (confidence) => {
@@ -451,6 +483,21 @@ const ReceiptSnap = (props) => {
     if (normalizedConfidence >= 0.9) return '#15803d';
     if (normalizedConfidence >= 0.7) return '#a16207';
     return '#991b1b';
+  };
+
+  const formatStatusTime = (timestamp) => {
+    if (!timestamp) {
+      return 'Not yet';
+    }
+
+    try {
+      return new Date(timestamp).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (err) {
+      return 'Recorded';
+    }
   };
 
   const dynamicStyles = useMemo(() => StyleSheet.create({
@@ -472,6 +519,49 @@ const ReceiptSnap = (props) => {
     results && results.success ? buildReceiptSummary(results) : null
   ), [results]);
 
+  const receiptFieldRows = useMemo(() => (
+    results && results.success ? buildReceiptFieldRows(results) : []
+  ), [results]);
+
+  const isBusy = processing || uploading;
+
+  const workflowSteps = useMemo(() => ([
+    {
+      label: 'Mode',
+      value: selectedModel ? (selectedModel === 'tuned' ? 'Tuned' : 'Baseline') : 'Not selected',
+      state: selectedModel ? 'done' : 'active'
+    },
+    {
+      label: 'Image',
+      value: imageInfo ? `${bytesToKilobytes(imageInfo.size)}KB ready` : 'No image',
+      state: imageInfo ? 'done' : selectedModel ? 'active' : 'idle'
+    },
+    {
+      label: 'Upload',
+      value: uploading ? 'Uploading' : uploadData ? formatStatusTime(lastUploadedAt) : 'Pending',
+      state: uploadData ? 'done' : uploading ? 'active' : 'idle'
+    },
+    {
+      label: 'OCR',
+      value: processing ? (processingStage || 'Processing') : receiptSummary ? formatStatusTime(lastProcessedAt) : error ? 'Needs retry' : 'Pending',
+      state: receiptSummary ? 'done' : processing ? 'active' : error ? 'error' : 'idle'
+    }
+  ]), [selectedModel, imageInfo, uploadData, uploading, lastUploadedAt, processing, processingStage, receiptSummary, lastProcessedAt, error]);
+
+  const getWorkflowStepStyle = (state) => ([
+    styles.workflowStep,
+    state === 'done' && styles.workflowStepDone,
+    state === 'active' && styles.workflowStepActive,
+    state === 'error' && styles.workflowStepError
+  ]);
+
+  const getWorkflowDotStyle = (state) => ([
+    styles.workflowDot,
+    state === 'done' && styles.workflowDotDone,
+    state === 'active' && styles.workflowDotActive,
+    state === 'error' && styles.workflowDotError
+  ]);
+
   return (
     <ScrollView style={[styles.container, dynamicStyles.container]}>
       <View style={styles.content}>
@@ -480,6 +570,16 @@ const ReceiptSnap = (props) => {
           <Text style={styles.headerSubtitle}>
             Select mode -> Upload -> Auto-process
           </Text>
+        </View>
+
+        <View style={styles.workflowTracker}>
+          {workflowSteps.map((step) => (
+            <View key={step.label} style={getWorkflowStepStyle(step.state)}>
+              <View style={getWorkflowDotStyle(step.state)} />
+              <Text style={styles.workflowLabel}>{step.label}</Text>
+              <Text style={styles.workflowValue}>{step.value}</Text>
+            </View>
+          ))}
         </View>
 
         {/* STEP 1: Mode Selection - MUST BE FIRST */}
@@ -493,10 +593,10 @@ const ReceiptSnap = (props) => {
               style={[
                 styles.modelOption,
                 selectedModel === 'tuned' && styles.modelOptionSelected,
-                (processing || uploading) && styles.modelOptionDisabled
+                isBusy && styles.modelOptionDisabled
               ]}
               onPress={() => setSelectedModel('tuned')}
-              disabled={processing || uploading}
+              disabled={isBusy}
             >
               <Text style={styles.modelOptionEmoji}>T</Text>
               <Text style={styles.modelOptionText}>Tuned</Text>
@@ -506,10 +606,10 @@ const ReceiptSnap = (props) => {
               style={[
                 styles.modelOption,
                 selectedModel === 'baseline' && styles.modelOptionSelected,
-                (processing || uploading) && styles.modelOptionDisabled
+                isBusy && styles.modelOptionDisabled
               ]}
               onPress={() => setSelectedModel('baseline')}
-              disabled={processing || uploading}
+              disabled={isBusy}
             >
               <Text style={styles.modelOptionEmoji}>B</Text>
               <Text style={styles.modelOptionText}>Baseline</Text>
@@ -523,10 +623,10 @@ const ReceiptSnap = (props) => {
           style={[
             styles.uploadArea,
             !selectedModel && styles.uploadAreaDisabled,
-            (processing || uploading) && styles.uploadAreaDisabled
+            isBusy && styles.uploadAreaDisabled
           ]}
           onPress={pickImage}
-          disabled={!selectedModel || processing || uploading}
+          disabled={!selectedModel || isBusy}
           activeOpacity={0.7}
         >
           <Text style={styles.uploadIcon}>
@@ -591,13 +691,35 @@ const ReceiptSnap = (props) => {
           </View>
         )}
 
+        {uploadData && !processing && !results && !error && (
+          <View style={styles.readyBanner}>
+            <Text style={styles.readyTitle}>Upload complete</Text>
+            <Text style={styles.readyText}>
+              OCR starts automatically. Uploaded at {formatStatusTime(lastUploadedAt)}.
+            </Text>
+          </View>
+        )}
+
         {(results || error) && (
-          <TouchableOpacity
-            style={[styles.btn, styles.btnSecondary]}
-            onPress={resetForm}
-          >
-            <Text style={styles.btnSecondaryText}>Process Another Receipt</Text>
-          </TouchableOpacity>
+          <View style={styles.actionRow}>
+            {error && uploadData && (
+              <TouchableOpacity
+                style={[styles.btn, styles.actionButton, dynamicStyles.btnPrimary, isBusy && styles.btnDisabled]}
+                onPress={retryProcessing}
+                disabled={isBusy}
+              >
+                <Text style={styles.btnText}>Retry OCR</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[styles.btn, styles.actionButton, styles.btnSecondary]}
+              onPress={resetForm}
+            >
+              <Text style={styles.btnSecondaryText}>
+                {error ? 'Start Over' : 'Process Another Receipt'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         )}
 
         {processing && (
@@ -608,6 +730,7 @@ const ReceiptSnap = (props) => {
               <Text style={styles.processingSubtext}>
                 {selectedModel === 'tuned' ? 'Using fast optimized endpoint with grayscale image' : 'Using baseline endpoint'}
               </Text>
+              <Text style={styles.processingAttempt}>Attempt {Math.max(attemptCount, 1)}</Text>
               <Text style={dynamicStyles.timer}>{processingTime}s</Text>
 
               {processingStage && (
@@ -630,48 +753,34 @@ const ReceiptSnap = (props) => {
                 </View>
               </View>
 
-              <View style={styles.resultRow}>
-                <Text style={styles.resultLabel}>Store Name:</Text>
-                <Text style={styles.resultValue}>
-                  {receiptSummary.storeName}
-                </Text>
-              </View>
-
-              <View style={styles.resultRow}>
-                <Text style={styles.resultLabel}>Confidence:</Text>
-                <View style={[
-                  styles.confidence,
-                  getConfidenceStyle(receiptSummary.confidence)
-                ]}>
-                  <Text style={[
-                    styles.confidenceText,
-                    { color: getConfidenceTextColor(receiptSummary.confidence) }
-                  ]}>
-                    {formatConfidencePercent(receiptSummary.confidence)}%
-                  </Text>
+              <View style={styles.resultMetaGrid}>
+                <View style={styles.resultMetaItem}>
+                  <Text style={styles.resultMetaLabel}>Processing</Text>
+                  <Text style={styles.resultMetaValue}>{receiptSummary.processingTime}</Text>
+                </View>
+                <View style={styles.resultMetaItem}>
+                  <Text style={styles.resultMetaLabel}>Store Confidence</Text>
+                  <Text style={styles.resultMetaValue}>{formatConfidencePercent(receiptSummary.confidence)}%</Text>
+                </View>
+                <View style={styles.resultMetaItem}>
+                  <Text style={styles.resultMetaLabel}>Attempts</Text>
+                  <Text style={styles.resultMetaValue}>{attemptCount}</Text>
                 </View>
               </View>
 
-              <View style={styles.resultRow}>
-                <Text style={styles.resultLabel}>Date:</Text>
-                <Text style={styles.resultValue}>
-                  {receiptSummary.date}
-                </Text>
-              </View>
-
-              <View style={styles.resultRow}>
-                <Text style={styles.resultLabel}>Total Amount:</Text>
-                <Text style={styles.resultValue}>
-                  {receiptSummary.totalAmount}
-                </Text>
-              </View>
-
-              <View style={styles.resultRow}>
-                <Text style={styles.resultLabel}>Processing Time:</Text>
-                <Text style={[styles.resultValue, styles.resultValueHighlight]}>
-                  {receiptSummary.processingTime}
-                </Text>
-              </View>
+              {receiptFieldRows.map((field) => (
+                <View key={field.key} style={styles.resultRow}>
+                  <Text style={styles.resultLabel}>{field.label}:</Text>
+                  <View style={styles.resultValueGroup}>
+                    <Text style={styles.resultValue}>{field.value}</Text>
+                    {field.confidence !== null && (
+                      <Text style={[styles.fieldConfidenceText, { color: getConfidenceTextColor(field.confidence) }]}>
+                        {formatConfidencePercent(field.confidence)}% confidence
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              ))}
             </View>
           </View>
         )}
@@ -679,6 +788,9 @@ const ReceiptSnap = (props) => {
         {error && (
           <View style={styles.errorContainer}>
             <Text style={styles.errorText}>Error: {error}</Text>
+            <Text style={styles.errorHelpText}>
+              {uploadData ? 'Retry OCR or start over with a new receipt.' : 'Choose a receipt again to restart the upload.'}
+            </Text>
           </View>
         )}
       </View>
@@ -712,6 +824,63 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     textAlign: 'center',
   },
+  workflowTracker: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -4,
+    marginBottom: 24,
+  },
+  workflowStep: {
+    flexGrow: 1,
+    flexBasis: '45%',
+    minHeight: 76,
+    padding: 12,
+    margin: 4,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    backgroundColor: '#fff',
+  },
+  workflowStepDone: {
+    borderColor: '#bbf7d0',
+    backgroundColor: '#f0fdf4',
+  },
+  workflowStepActive: {
+    borderColor: '#bfdbfe',
+    backgroundColor: '#eff6ff',
+  },
+  workflowStepError: {
+    borderColor: '#fecaca',
+    backgroundColor: '#fef2f2',
+  },
+  workflowDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#d1d5db',
+    marginBottom: 8,
+  },
+  workflowDotDone: {
+    backgroundColor: '#16a34a',
+  },
+  workflowDotActive: {
+    backgroundColor: '#2563eb',
+  },
+  workflowDotError: {
+    backgroundColor: '#dc2626',
+  },
+  workflowLabel: {
+    fontSize: 11,
+    color: '#6b7280',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  workflowValue: {
+    fontSize: 13,
+    color: '#111827',
+    fontWeight: '600',
+    marginTop: 4,
+  },
   modelSection: {
     marginBottom: 24,
   },
@@ -719,6 +888,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#1a1a1a',
+    marginBottom: 12,
+  },
+  sectionHint: {
+    fontSize: 12,
+    color: '#6b7280',
+    lineHeight: 18,
     marginBottom: 12,
   },
   modelOptionsContainer: {
@@ -746,6 +921,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     color: '#1a1a1a',
+  },
+  modelOptionEmoji: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#eef2ff',
+    color: '#1d4ed8',
+    textAlign: 'center',
+    lineHeight: 32,
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 8,
+  },
+  modelOptionDesc: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginTop: 4,
+    textAlign: 'center',
   },
   uploadArea: {
     borderWidth: 2,
@@ -818,6 +1011,34 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  actionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -4,
+    marginBottom: 12,
+  },
+  actionButton: {
+    flexGrow: 1,
+    marginHorizontal: 4,
+  },
+  readyBanner: {
+    backgroundColor: '#ecfdf5',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+    marginBottom: 12,
+  },
+  readyTitle: {
+    fontSize: 14,
+    color: '#047857',
+    fontWeight: '700',
+  },
+  readyText: {
+    fontSize: 12,
+    color: '#065f46',
+    marginTop: 4,
+  },
   processingOverlay: {
     position: 'absolute',
     top: 0,
@@ -849,6 +1070,12 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     textAlign: 'center',
   },
+  processingAttempt: {
+    fontSize: 12,
+    color: '#4b5563',
+    marginTop: 10,
+    fontWeight: '600',
+  },
   results: {
     marginTop: 24,
   },
@@ -857,11 +1084,60 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 20,
   },
+  resultHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
   resultTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#1a1a1a',
-    marginBottom: 16,
+  },
+  modeBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  modeBadgeTuned: {
+    backgroundColor: '#d1fae5',
+  },
+  modeBadgeBaseline: {
+    backgroundColor: '#dbeafe',
+  },
+  modeBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#1f2937',
+  },
+  resultMetaGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginHorizontal: -4,
+    marginBottom: 12,
+  },
+  resultMetaItem: {
+    flexGrow: 1,
+    minWidth: 120,
+    padding: 10,
+    margin: 4,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    backgroundColor: '#fff',
+  },
+  resultMetaLabel: {
+    fontSize: 11,
+    color: '#6b7280',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+  },
+  resultMetaValue: {
+    fontSize: 14,
+    color: '#111827',
+    fontWeight: '700',
+    marginTop: 4,
   },
   resultRow: {
     flexDirection: 'row',
@@ -878,26 +1154,17 @@ const styles = StyleSheet.create({
   resultValue: {
     color: '#1a1a1a',
     textAlign: 'right',
+    flexShrink: 1,
+  },
+  resultValueGroup: {
     flex: 1,
+    alignItems: 'flex-end',
     marginLeft: 8,
   },
-  confidence: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  confidenceText: {
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  confidenceHigh: {
-    backgroundColor: '#dcfce7',
-  },
-  confidenceMedium: {
-    backgroundColor: '#fef9c3',
-  },
-  confidenceLow: {
-    backgroundColor: '#fee2e2',
+  fieldConfidenceText: {
+    fontSize: 11,
+    marginTop: 4,
+    fontWeight: '600',
   },
   errorContainer: {
     marginTop: 16,
@@ -909,6 +1176,11 @@ const styles = StyleSheet.create({
     color: '#991b1b',
     fontSize: 14,
     fontWeight: '500',
+  },
+  errorHelpText: {
+    color: '#7f1d1d',
+    fontSize: 12,
+    marginTop: 6,
   },
   uploadingBanner: {
     flexDirection: 'row',
@@ -924,27 +1196,6 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     fontSize: 14,
     color: '#1e40af',
-    fontWeight: '500',
-  },
-  uploadSuccessBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#dcfce7',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#86efac',
-  },
-  uploadSuccessIcon: {
-    fontSize: 18,
-    color: '#15803d',
-    fontWeight: 'bold',
-  },
-  uploadSuccessText: {
-    marginLeft: 10,
-    fontSize: 14,
-    color: '#15803d',
     fontWeight: '500',
   },
   progressStageContainer: {
