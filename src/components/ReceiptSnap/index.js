@@ -134,11 +134,16 @@ const ReceiptSnap = (props) => {
 
           canvas.toBlob(
             (blob) => {
+              if (!blob) {
+                reject(new Error('Failed to compress image.'));
+                return;
+              }
+
               const compressionTime = Date.now() - startTime;
               const compressedSize = blob.size;
               const compressionRatio = calculateReductionPercent(originalSize, compressedSize);
 
-              console.log(`[COMPRESSION] ${bytesToKilobytes(originalSize)}KB → ${bytesToKilobytes(compressedSize)}KB (${compressionRatio}% reduction in ${compressionTime}ms)`);
+              console.log(`[COMPRESSION] ${bytesToKilobytes(originalSize)}KB to ${bytesToKilobytes(compressedSize)}KB (${compressionRatio}% reduction in ${compressionTime}ms)`);
 
               setCompressionStats({
                 originalSize,
@@ -473,7 +478,7 @@ const ReceiptSnap = (props) => {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Receipt Processor M3.2</Text>
           <Text style={styles.headerSubtitle}>
-            Select mode → Upload → Auto-process
+            Select mode -> Upload -> Auto-process
           </Text>
         </View>
 
@@ -481,7 +486,7 @@ const ReceiptSnap = (props) => {
         <View style={styles.modelSection}>
           <Text style={styles.sectionTitle}>Step 1: Select Processing Mode</Text>
           <Text style={styles.sectionHint}>
-            Choose before uploading • Tuned: Auto-compressed to 1280px @ 68% and grayscaled • Baseline: Original quality
+            Choose before uploading | Tuned: Auto-compressed to 1280px @ 68% and grayscaled | Baseline: Original quality
           </Text>
           <View style={styles.modelOptionsContainer}>
             <TouchableOpacity
@@ -493,9 +498,9 @@ const ReceiptSnap = (props) => {
               onPress={() => setSelectedModel('tuned')}
               disabled={processing || uploading}
             >
-              <Text style={styles.modelOptionEmoji}>⚡</Text>
+              <Text style={styles.modelOptionEmoji}>T</Text>
               <Text style={styles.modelOptionText}>Tuned</Text>
-              <Text style={styles.modelOptionDesc}>Fast • Compressed • Grayscale</Text>
+              <Text style={styles.modelOptionDesc}>Fast | Compressed | Grayscale</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[
@@ -506,9 +511,9 @@ const ReceiptSnap = (props) => {
               onPress={() => setSelectedModel('baseline')}
               disabled={processing || uploading}
             >
-              <Text style={styles.modelOptionEmoji}>📷</Text>
+              <Text style={styles.modelOptionEmoji}>B</Text>
               <Text style={styles.modelOptionText}>Baseline</Text>
-              <Text style={styles.modelOptionDesc}>Standard • Original</Text>
+              <Text style={styles.modelOptionDesc}>Standard | Original</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -525,7 +530,7 @@ const ReceiptSnap = (props) => {
           activeOpacity={0.7}
         >
           <Text style={styles.uploadIcon}>
-            {selectedModel === 'tuned' ? '⚡📤' : '📤'}
+            {selectedModel === 'tuned' ? 'T+' : '+'}
           </Text>
           <Text style={styles.uploadText}>
             {!selectedModel ? 'Select mode above first' :
@@ -543,12 +548,12 @@ const ReceiptSnap = (props) => {
 
         {compressionStats && (
           <View style={styles.compressionBanner}>
-            <Text style={styles.compressionIcon}>⚡</Text>
+            <Text style={styles.compressionIcon}>T</Text>
             <View style={styles.compressionInfo}>
               <Text style={styles.compressionTitle}>Image Optimized (Tuned Mode)</Text>
               <Text style={styles.compressionDetails}>
-                {compressionStats.originalDimensions} → {compressionStats.compressedDimensions} •
-                {bytesToKilobytes(compressionStats.originalSize, 0)}KB → {bytesToKilobytes(compressionStats.compressedSize, 0)}KB
+                {compressionStats.originalDimensions} -> {compressionStats.compressedDimensions} |
+                {bytesToKilobytes(compressionStats.originalSize, 0)}KB -> {bytesToKilobytes(compressionStats.compressedSize, 0)}KB
                 ({compressionStats.compressionRatio}% smaller) in {compressionStats.compressionTime}ms
               </Text>
             </View>
@@ -576,7 +581,7 @@ const ReceiptSnap = (props) => {
             {imageInfo && imageInfo.size > 0 && (
               <View style={styles.fileInfo}>
                 <Text style={styles.fileInfoText}>
-                  {imageInfo.name} • {bytesToKilobytes(imageInfo.size)}KB
+                  {imageInfo.name} | {bytesToKilobytes(imageInfo.size)}KB
                   {imageInfo.originalSize && imageInfo.originalSize !== imageInfo.size &&
                     ` (was ${bytesToKilobytes(imageInfo.originalSize)}KB)`
                   }
@@ -621,7 +626,7 @@ const ReceiptSnap = (props) => {
               <View style={styles.resultHeader}>
                 <Text style={styles.resultTitle}>Extracted Information</Text>
                 <View style={[styles.modeBadge, selectedModel === 'tuned' ? styles.modeBadgeTuned : styles.modeBadgeBaseline]}>
-                  <Text style={styles.modeBadgeText}>{selectedModel === 'tuned' ? '⚡ Tuned' : '📷 Baseline'}</Text>
+                  <Text style={styles.modeBadgeText}>{selectedModel === 'tuned' ? 'Tuned' : 'Baseline'}</Text>
                 </View>
               </View>
 
@@ -673,7 +678,7 @@ const ReceiptSnap = (props) => {
 
         {error && (
           <View style={styles.errorContainer}>
-            <Text style={styles.errorText}>❌ {error}</Text>
+            <Text style={styles.errorText}>Error: {error}</Text>
           </View>
         )}
       </View>
