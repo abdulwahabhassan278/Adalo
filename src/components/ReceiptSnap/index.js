@@ -28,16 +28,36 @@ const CONFIG = {
   JPEG_QUALITY: 0.68 // Original quality for tuned mode
 };
 
+const coerceBoolean = (value, fallback = true) => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'string') {
+    const normalizedValue = value.trim().toLowerCase();
+    if (normalizedValue === 'true') return true;
+    if (normalizedValue === 'false') return false;
+  }
+
+  return fallback;
+};
+
 const ReceiptSnap = (props) => {
   const {
     primaryColor = '#3b82f6',
     backgroundColor = '#f5f7fa',
     maxFileSize = 400,
-    timeoutSeconds = 70
+    timeoutSeconds = 70,
+    autoProcess = true,
+    showWorkflowStatus = true,
+    showCompressionStats = true
   } = props;
 
   const maxFileSizeBytes = maxFileSize * 1024;
   const timeoutMs = timeoutSeconds * 1000;
+  const autoProcessEnabled = coerceBoolean(autoProcess, true);
+  const showWorkflowStatusEnabled = coerceBoolean(showWorkflowStatus, true);
+  const showCompressionStatsEnabled = coerceBoolean(showCompressionStats, true);
   const fileInputRef = useRef(null);
   const stageTimersRef = useRef([]);
 
@@ -75,6 +95,34 @@ const ReceiptSnap = (props) => {
       if (interval) clearInterval(interval);
     };
   }, [processing]);
+
+  const clearReceiptState = (resetInput = true) => {
+    clearStageTimers();
+    setSelectedImage(null);
+    setImageInfo(null);
+    setResults(null);
+    setError(null);
+    setPreviewAspectRatio(null);
+    setUploadData(null);
+    setProcessingStage('');
+    setCompressionStats(null);
+    setLastUploadedAt(null);
+    setLastProcessedAt(null);
+    setAttemptCount(0);
+
+    if (resetInput && fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const selectProcessingMode = (mode) => {
+    if (processing || uploading || selectedModel === mode) {
+      return;
+    }
+
+    clearReceiptState();
+    setSelectedModel(mode);
+  };
 
   useEffect(() => () => clearStageTimers(), []);
 
@@ -214,15 +262,7 @@ const ReceiptSnap = (props) => {
     }
 
     try {
-      clearStageTimers();
-      setResults(null);
-      setError(null);
-      setUploadData(null);
-      setProcessingStage('');
-      setCompressionStats(null);
-      setLastUploadedAt(null);
-      setLastProcessedAt(null);
-      setAttemptCount(0);
+      clearReceiptState(false);
 
       // TUNED mode: compress and grayscale before upload
       if (selectedModel === 'tuned') {
@@ -239,9 +279,6 @@ const ReceiptSnap = (props) => {
           extension: 'jpg',
           originalSize: file.size
         });
-        setResults(null);
-        setError(null);
-        setUploadData(null);
         setProcessingStage('');
 
         await uploadImageToDatabase(compressed.base64Data, {
@@ -274,9 +311,6 @@ const ReceiptSnap = (props) => {
             type: file.type,
             extension: extension
           });
-          setResults(null);
-          setError(null);
-          setUploadData(null);
           setProcessingStage('');
 
           await uploadImageToDatabase(base64Data, file);
@@ -300,6 +334,7 @@ const ReceiptSnap = (props) => {
     }
 
     if (Platform.OS === 'web' && fileInputRef.current) {
+      fileInputRef.current.onchange = handleWebFileSelect;
       fileInputRef.current.click();
     } else {
       Alert.alert('Platform Not Supported', 'Image selection is only available on web platform.');
@@ -361,10 +396,12 @@ const ReceiptSnap = (props) => {
       setUploadData(uploadDataResponse);
       setLastUploadedAt(new Date().toISOString());
 
-      // Auto-start processing immediately after upload
-      stageTimersRef.current.push(setTimeout(() => {
-        processReceipt(uploadDataResponse);
-      }, 500));
+      if (autoProcessEnabled) {
+        // Auto-start processing immediately after upload
+        stageTimersRef.current.push(setTimeout(() => {
+          processReceipt(uploadDataResponse);
+        }, 500));
+      }
 
     } catch (err) {
       const errorMsg = err.message;
@@ -459,23 +496,8 @@ const ReceiptSnap = (props) => {
   };
 
   const resetForm = () => {
-    clearStageTimers();
-    setSelectedImage(null);
-    setImageInfo(null);
-    setResults(null);
-    setError(null);
+    clearReceiptState();
     setSelectedModel(null);
-    setPreviewAspectRatio(null);
-    setUploadData(null);
-    setProcessingStage('');
-    setCompressionStats(null);
-    setLastUploadedAt(null);
-    setLastProcessedAt(null);
-    setAttemptCount(0);
-
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
   };
 
   const getConfidenceTextColor = (confidence) => {
@@ -524,6 +546,7 @@ const ReceiptSnap = (props) => {
   ), [results]);
 
   const isBusy = processing || uploading;
+  const canProcessUploadedReceipt = uploadData && !results && !error && !processing && !uploading;
 
   const workflowSteps = useMemo(() => ([
     {
@@ -568,19 +591,21 @@ const ReceiptSnap = (props) => {
         <View style={styles.header}>
           <Text style={styles.headerTitle}>Receipt Processor M3.2</Text>
           <Text style={styles.headerSubtitle}>
-            Select mode -> Upload -> Auto-process
+            {autoProcessEnabled ? 'Select mode -> Upload -> Auto-process' : 'Select mode -> Upload -> Process'}
           </Text>
         </View>
 
-        <View style={styles.workflowTracker}>
-          {workflowSteps.map((step) => (
-            <View key={step.label} style={getWorkflowStepStyle(step.state)}>
-              <View style={getWorkflowDotStyle(step.state)} />
-              <Text style={styles.workflowLabel}>{step.label}</Text>
-              <Text style={styles.workflowValue}>{step.value}</Text>
-            </View>
-          ))}
-        </View>
+        {showWorkflowStatusEnabled && (
+          <View style={styles.workflowTracker}>
+            {workflowSteps.map((step) => (
+              <View key={step.label} style={getWorkflowStepStyle(step.state)}>
+                <View style={getWorkflowDotStyle(step.state)} />
+                <Text style={styles.workflowLabel}>{step.label}</Text>
+                <Text style={styles.workflowValue}>{step.value}</Text>
+              </View>
+            ))}
+          </View>
+        )}
 
         {/* STEP 1: Mode Selection - MUST BE FIRST */}
         <View style={styles.modelSection}>
@@ -595,7 +620,7 @@ const ReceiptSnap = (props) => {
                 selectedModel === 'tuned' && styles.modelOptionSelected,
                 isBusy && styles.modelOptionDisabled
               ]}
-              onPress={() => setSelectedModel('tuned')}
+              onPress={() => selectProcessingMode('tuned')}
               disabled={isBusy}
             >
               <Text style={styles.modelOptionEmoji}>T</Text>
@@ -608,7 +633,7 @@ const ReceiptSnap = (props) => {
                 selectedModel === 'baseline' && styles.modelOptionSelected,
                 isBusy && styles.modelOptionDisabled
               ]}
-              onPress={() => setSelectedModel('baseline')}
+              onPress={() => selectProcessingMode('baseline')}
               disabled={isBusy}
             >
               <Text style={styles.modelOptionEmoji}>B</Text>
@@ -639,14 +664,14 @@ const ReceiptSnap = (props) => {
           </Text>
           <Text style={styles.uploadHint}>
             {selectedModel === 'tuned' ?
-              'Will auto-compress to 1280px @ 68% quality and convert to grayscale' :
+              `Will auto-compress to 1280px @ 68% quality and convert to grayscale${autoProcessEnabled ? '' : ', then wait for manual processing'}` :
               selectedModel === 'baseline' ?
-              'Will upload original image without compression or grayscale' :
+              `Will upload original image without compression or grayscale${autoProcessEnabled ? '' : ', then wait for manual processing'}` :
               'Choose Baseline or Tuned mode above'}
           </Text>
         </TouchableOpacity>
 
-        {compressionStats && (
+        {showCompressionStatsEnabled && compressionStats && (
           <View style={styles.compressionBanner}>
             <Text style={styles.compressionIcon}>T</Text>
             <View style={styles.compressionInfo}>
@@ -693,10 +718,29 @@ const ReceiptSnap = (props) => {
 
         {uploadData && !processing && !results && !error && (
           <View style={styles.readyBanner}>
-            <Text style={styles.readyTitle}>Upload complete</Text>
+            <Text style={styles.readyTitle}>{autoProcessEnabled ? 'Upload complete' : 'Ready to process'}</Text>
             <Text style={styles.readyText}>
-              OCR starts automatically. Uploaded at {formatStatusTime(lastUploadedAt)}.
+              {autoProcessEnabled
+                ? `OCR starts automatically. Uploaded at ${formatStatusTime(lastUploadedAt)}.`
+                : `Uploaded at ${formatStatusTime(lastUploadedAt)}. Start OCR when ready.`}
             </Text>
+          </View>
+        )}
+
+        {canProcessUploadedReceipt && !autoProcessEnabled && (
+          <View style={styles.actionRow}>
+            <TouchableOpacity
+              style={[styles.btn, styles.actionButton, dynamicStyles.btnPrimary]}
+              onPress={() => processReceipt(uploadData)}
+            >
+              <Text style={styles.btnText}>Process Receipt</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.btn, styles.actionButton, styles.btnSecondary]}
+              onPress={resetForm}
+            >
+              <Text style={styles.btnSecondaryText}>Start Over</Text>
+            </TouchableOpacity>
           </View>
         )}
 
