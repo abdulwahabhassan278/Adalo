@@ -33,6 +33,27 @@
       "description": "Processing timeout in seconds"
     },
     {
+      "name": "autoProcess",
+      "displayName": "Auto Process",
+      "type": "boolean",
+      "default": true,
+      "description": "Start OCR automatically after upload"
+    },
+    {
+      "name": "showWorkflowStatus",
+      "displayName": "Show Workflow Status",
+      "type": "boolean",
+      "default": true,
+      "description": "Show the mode, image, upload, and OCR status tracker"
+    },
+    {
+      "name": "showCompressionStats",
+      "displayName": "Show Compression Stats",
+      "type": "boolean",
+      "default": true,
+      "description": "Show tuned-mode image compression details after upload"
+    },
+    {
       "name": "imageURL",
       "displayName": "Image URL",
       "type": "text",
