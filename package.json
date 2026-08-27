@@ -6,7 +6,7 @@
   "license": "ISC",
   "author": "",
   "scripts": {
-    "start": "adalo dev",
+    "start": "node init && adalo dev",
     "login": "adalo login",
     "publish": "adalo publish"
   },

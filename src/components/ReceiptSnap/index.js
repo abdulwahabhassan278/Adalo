@@ -415,6 +415,10 @@ const ReceiptSnap = (props) => {
   };
 
   const processReceipt = async (uploadDataParam) => {
+    if (processing || uploading) {
+      return;
+    }
+
     const dataToUse = uploadDataParam || uploadData;
 
     if (!dataToUse) {
